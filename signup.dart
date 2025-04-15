@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'dart:math';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
@@ -14,10 +13,8 @@ class SignupPage extends StatefulWidget {
 }
 
 class _SignupPageState extends State<SignupPage> with SingleTickerProviderStateMixin {
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
-  final TextEditingController confirmPasswordController = TextEditingController();
   final TextEditingController phoneNumberController = TextEditingController();
+  final TextEditingController cprController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final DatabaseReference database = FirebaseDatabase.instance.ref();
   late AnimationController _animationController;
@@ -52,69 +49,30 @@ class _SignupPageState extends State<SignupPage> with SingleTickerProviderStateM
         : '';
   }
 
-  List<int> _generateSeed() {
-    final random = Random.secure();
-    return List.generate(12, (_) => random.nextInt(900) + 100); // Generates a 3-digit number
-  }
-
   Future<void> _signUpUser() async {
-    if (passwordController.text.trim() != confirmPasswordController.text.trim()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match!')),
-      );
-      return;
-    }
+    final phone = phoneNumberController.text.trim();
+    final cpr = cprController.text.trim();
 
-    if (phoneNumberController.text.trim().isEmpty) {
+    if (phone.isEmpty || cpr.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Phone number is required!')),
+        const SnackBar(content: Text('Phone number and CPR are required!')),
       );
       return;
     }
 
     try {
-      // ✅ Step 1: Create User with Email & Password
-      final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
-      );
-
-      final User? user = userCredential.user;
-      if (user == null) {
-        throw Exception("User creation failed.");
-      }
-
       final String deviceUUID = await _getDeviceUUID();
-      final List<int> seed = _generateSeed();
-      final String seedHash = sha256.convert(utf8.encode(seed.join(' '))).toString(); // Hash the seed
 
-      // ✅ Step 2: Save User Data in Firebase Realtime Database
-      await database.child('users/${user.uid}').set({
-        'email': emailController.text.trim(),
-        'phone_number': phoneNumberController.text.trim(),
+      final newUserRef = database.child('users').push();
+      await newUserRef.set({
+        'phone_number': phone,
+        'cpr': cpr,
         'device_uuid': deviceUUID,
-        'seed': seedHash, // Save the hashed seed
         'created_at': DateTime.now().toIso8601String(),
       });
 
-      // ✅ Step 3: Show New Seed Code
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Your Seed Code'),
-          content: Text(
-            'This is your recovery seed code. Please keep it safe and secret:\n\n${seed.join(' ')}',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pushNamed(context, '/login'),
-              child: const Text('I Understand'),
-            ),
-          ],
-        ),
-      );
+      Navigator.pushNamed(context, '/cpr_scan');
     } catch (e) {
-      print("❌ Error during sign-up: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
@@ -150,26 +108,15 @@ class _SignupPageState extends State<SignupPage> with SingleTickerProviderStateM
                     ),
                     const SizedBox(height: 20),
                     TextField(
-                      controller: emailController,
-                      decoration: _customInputDecoration('Email'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: passwordController,
-                      obscureText: true,
-                      decoration: _customInputDecoration('Password'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: confirmPasswordController,
-                      obscureText: true,
-                      decoration: _customInputDecoration('Confirm Password'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
                       controller: phoneNumberController,
                       keyboardType: TextInputType.phone,
-                      decoration: _customInputDecoration('Phone Number (e.g., +1234567890)'),
+                      decoration: _customInputDecoration('Phone Number (e.g., +973...)'),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: cprController,
+                      keyboardType: TextInputType.number,
+                      decoration: _customInputDecoration('CPR Number'),
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton(
